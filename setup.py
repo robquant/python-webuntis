@@ -10,7 +10,7 @@
 from setuptools import setup, find_packages
 from sys import version_info
 
-dependencies = ['requests']
+dependencies = ['httpx2']
 
 setup(
     name='webuntis',
