@@ -200,6 +200,14 @@ class PeriodObject(ListItem):
         ...
 
     @property
+    def lesson_info(self) -> str:
+        ...
+
+    @property
+    def exam(self) -> bool:
+        ...
+
+    @property
     def flags(self) -> str:
         ...
 

@@ -1,5 +1,5 @@
 import datetime
-from typing import Any, Union, Dict
+from typing import Any, Union, Dict, List
 
 from webuntis import objects, utils
 
@@ -31,7 +31,10 @@ class ResultWrapperMixin:
 
     def timetable_extended(self,
                            start: Union[datetime.datetime, datetime.date, int],
-                           end: Union[datetime.datetime, datetime.date, int], **type_and_id) -> objects.PeriodList: ...
+                           end: Union[datetime.datetime, datetime.date, int],
+                           with_lesson_info: bool = ...,
+                           teacher_fields: Union[List[str], None] = ...,
+                           **type_and_id) -> objects.PeriodList: ...
 
     def my_timetable(self,
                      start: Union[datetime.datetime, datetime.date, int],

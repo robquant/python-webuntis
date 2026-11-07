@@ -6,7 +6,28 @@
 """
 from webuntis import utils, objects, errors
 from webuntis.utils import result_wrapper, log, rpc_request
+from webuntis.utils.rest import RESOURCE_TYPES, RestClient, merge_period_texts
 from webuntis.utils.userinput import unicode_string
+
+#: JSON-RPC element type numbers, keyed by the keyword they are passed as.
+ELEMENT_TYPES = {
+    'klasse': 1,
+    'teacher': 2,
+    'subject': 3,
+    'room': 4,
+    'student': 5,
+}
+
+#: Options every ``getTimetable`` request of the extended timetable uses.
+EXTENDED_OPTIONS = dict(
+    onlyBaseTimetable=False,
+    showBooking=True,
+    showInfo=True,
+    showSubstText=True,
+    showLsText=True,
+    showLsNumber=True,
+    showStudentgroup=True,
+)
 
 
 class JSONRPCSession(object):
@@ -227,24 +248,51 @@ class ResultWrapperMixin(object):
                                              id=int(element_id), type=element_type_table[element_type])
         return objects.PeriodList, 'getTimetable', parameters
 
-    @result_wrapper
-    def timetable_extended(self, start, end, **type_and_id):
+    def timetable_extended(self, start, end, with_lesson_info=False,
+                           teacher_fields=None, **type_and_id):
         """Get the timetable for a specific school class and time period.
 
         Like timetable, but includes more info.
-        """
-        element_type_table = {
-            'klasse': 1,
-            'teacher': 2,
-            'subject': 3,
-            'room': 4,
-            'student': 5
-        }
 
+        :param with_lesson_info: also fetch the REST v1 timetable and merge the
+            texts the JSON-RPC API does not return (``LESSON_INFO``,
+            ``NOTES_FOR_ALL``, ``SUBSTITUTION_TEXT``), plus the ``exam`` flag.
+            See :py:func:`webuntis.utils.rest.merge_period_texts`.
+        :param teacher_fields: fields to inline into the ``te`` entries, e.g.
+            ``["id", "name"]``. Useful when ``getTeachers()`` is not
+            permitted for the account.
+        """
+        if not with_lesson_info and teacher_fields is None:
+            return self._timetable_extended_cached(start=start, end=end,
+                                                   **type_and_id)
+
+        # The merged variant cannot go through result_wrapper (it needs the raw
+        # JSON-RPC data), so the cache flag is not supported here.
+        type_and_id.pop('from_cache', None)
+        element_type, element_id = self._timetable_element(type_and_id)
+        options = self._timetable_options(start, end, element_id, element_type,
+                                          teacher_fields)
+        data = self._request('getTimetable', {'options': options})
+        if with_lesson_info:
+            rest = RestClient(self.config)
+            days = rest.timetable_entries(RESOURCE_TYPES[ELEMENT_TYPES[element_type]],
+                                          element_id, start, end)
+            data = merge_period_texts(data, days)
+        return objects.PeriodList(session=self, data=data)
+
+    @result_wrapper
+    def _timetable_extended_cached(self, start, end, **type_and_id):
+        element_type, element_id = self._timetable_element(type_and_id)
+        options = self._timetable_options(start, end, element_id, element_type)
+        return objects.PeriodList, 'getTimetable', {'options': options}
+
+    @staticmethod
+    def _timetable_element(type_and_id):
+        """Validate the ``klasse=...``/``teacher=...`` keyword argument."""
         invalid_type_error = TypeError(
             'You have to specify exactly one of the following parameters by '
             'keyword: ' +
-            (', '.join(element_type_table.keys()))
+            (', '.join(ELEMENT_TYPES.keys()))
         )
 
         if len(type_and_id) != 1:
@@ -254,10 +302,25 @@ class ResultWrapperMixin(object):
 
         element_type = utils.userinput.string(element_type)
 
-        if element_type not in element_type_table:
+        if element_type not in ELEMENT_TYPES:
             raise invalid_type_error
 
-        return self._timetable_extended_raw(end, start, element_id, element_type_table[element_type])
+        return element_type, int(element_id)
+
+    def _timetable_options(self, start, end, element_id, element_type,
+                           teacher_fields=None):
+        options = self._create_date_param(
+            end,
+            start,
+            element={
+                'id': int(element_id),
+                'type': ELEMENT_TYPES[element_type],
+            },
+            **EXTENDED_OPTIONS
+        )
+        if teacher_fields:
+            options['teacherFields'] = list(teacher_fields)
+        return options
 
     @result_wrapper
     def my_timetable(self, end, start):
@@ -277,13 +340,7 @@ class ResultWrapperMixin(object):
                                               "id": int(element_id),
                                               "type": element_type_num,
                                           },
-                                          onlyBaseTimetable=False,
-                                          showBooking=True,
-                                          showInfo=True,
-                                          showSubstText=True,
-                                          showLsText=True,
-                                          showLsNumber=True,
-                                          showStudentgroup=True,
+                                          **EXTENDED_OPTIONS
                                           )
         parameters = {
             "options": options,

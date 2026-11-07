@@ -464,6 +464,27 @@ class PeriodObject(ListItem):
         return self._data.get(u'info', u'')
 
     @lazyproperty
+    def lesson_info(self):
+        """
+        the "Information zur Stunde" (REST v1 ``LESSON_INFO``) text
+
+        only available when timetable_extended(with_lesson_info=True) is used.
+        The JSON-RPC API omits this text for some periods, notably exams.
+        :return: str
+        """
+        return self._data.get(u'lessonInfo', u'')
+
+    @lazyproperty
+    def exam(self):
+        """
+        whether Untis flags this period as an exam (REST v1 ``type == "EXAM"``)
+
+        only available when timetable_extended(with_lesson_info=True) is used
+        :return: bool
+        """
+        return bool(self._data.get(u'exam', False))
+
+    @lazyproperty
     def activityType(self):
         """
         activity type of the lesson
